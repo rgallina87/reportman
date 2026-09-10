@@ -184,7 +184,7 @@ namespace EscPosReceiptTest
 
                 // --- 5. Init, cut, reset, drawer ---
                 Check(escpos.Length > 2 && escpos[0] == 27 && escpos[1] == 64, "Document starts with ESC @");
-                int iCut = IndexOf(escpos, new byte[] { 27, (byte)'m', 27, 64 });
+                int iCut = IndexOf(escpos, new byte[] { 27, (byte)'d', 4, 29, (byte)'V', 66, 0, 27, 64 });   // feed to the cutter, cut, reset (2026-09-09)
                 int iPulse = IndexOf(escpos, new byte[] { 27, (byte)'p', 0, 100, 100 });
                 Check(iCut > iPrint && iPulse > iCut && iPulse + 5 == escpos.Length, "Ends with cut, reset, then the drawer pulse");
 
@@ -223,7 +223,7 @@ namespace EscPosReceiptTest
                 Check(utf8.Length > 9 && utf8[2] == 28 && utf8[3] == (byte)'(' && utf8[4] == (byte)'C' && utf8[7] == 48 && utf8[8] == 2,
                     "EPSONTM88UTF8CUT starts with ESC @ FS ( C 2 0 48 2");
                 Check(IndexOf(utf8, new byte[] { (byte)'q', (byte)'u', (byte)'e', 0xC3, 0xB1, (byte)'o' }) >= 0, "...and the enye travels as UTF-8 C3 B1");
-                Check(IndexOf(utf8, new byte[] { 27, (byte)'m', 27, 64 }) > 0 && IndexOf(utf8, model) > 0, "The new drivers keep the cut and the native QR");
+                Check(IndexOf(utf8, new byte[] { 29, (byte)'V', 66, 0, 27, 64 }) > 0 && IndexOf(utf8, model) > 0, "The new drivers keep the cut and the native QR");
                 byte[] legacy = PrintText(report, "EPSONTM88IICUT");
                 Check(legacy[0] == 27 && legacy[1] == 64 && !(legacy[2] == 27 && legacy[3] == (byte)'t'), "The legacy driver still says nothing about the character set");
 

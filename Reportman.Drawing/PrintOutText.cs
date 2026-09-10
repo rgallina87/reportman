@@ -197,7 +197,95 @@ namespace Reportman.Drawing
                     if (SupportsNativeBarcode(bar.Symbology))
                         NativeBarcodeOut(bar, page.GetText(bar));
                     break;
+                case MetaObjectType.Image:
+                    // The ESC/POS receipt printers draw a raster image by themselves (GS v 0); the text driver
+                    // used to skip images altogether, so a logo on a receipt never printed and left its rows blank.
+                    MetaObjectImage img = (MetaObjectImage)aobj;
+                    if (!img.PreviewOnly && ImageRasterizer != null && IsEscPosReceiptDriver(EffectiveDriverName()))
+                        NativeImageOut(page, img);
+                    break;
             }
+        }
+        /// <summary>
+        /// Packed 1-bit rows of an image, as <c>GS v 0</c> wants them: MSB first, 1 = black, each row padded to a byte.
+        /// </summary>
+        public class RasterBits
+        {
+            /// <summary>Width in dots.</summary>
+            public int Width;
+            /// <summary>Height in dots (rows).</summary>
+            public int Height;
+            /// <summary>The rows, ((Width + 7) / 8) bytes each.</summary>
+            public byte[] Bits;
+        }
+        /// <summary>
+        /// Decodes an encoded image and fits it inside a box of dots as 1-bit rows. The text driver has no image
+        /// decoder of its own: the host registers one (Reportman.Drawing.CrossPlatform.EscPosImagen with SkiaSharp).
+        /// Null = images are skipped, as they always were.
+        /// </summary>
+        public static Func<byte[], int, int, RasterBits> ImageRasterizer;
+        /// <summary>
+        /// Widest raster an 80 mm ESC/POS receipt printer draws (TM-T88: 512 dots at 203 dpi across 72 mm; 576 on
+        /// the 80 mm-wide print area of newer models). 512 is what every clone honours.
+        /// </summary>
+        public const int ESCPOS_MAX_RASTER_DOTS = 512;
+        /// <summary>
+        /// Draws an image object as a <c>GS v 0</c> raster attached to the print line its top falls on, aligned
+        /// left/centre/right by where its box sits, and marks the lines its box covers as consumed (the printer
+        /// feeds the paper while drawing), exactly like <see cref="NativeBarcodeOut"/>.
+        /// </summary>
+        private void NativeImageOut(MetaPage page, MetaObjectImage img)
+        {
+            if (Lines.Count == 0)
+                return;
+            byte[] data;
+            using (System.IO.MemoryStream stream = page.GetStream(img))
+            {
+                if (stream == null || stream.Length == 0)
+                    return;
+                data = stream.ToArray();
+            }
+            int wDots = (int)Math.Round((double)img.Width * ESCPOS_DPI / Twips.TWIPS_PER_INCH);
+            int hDots = (int)Math.Round((double)img.Height * ESCPOS_DPI / Twips.TWIPS_PER_INCH);
+            if (wDots > ESCPOS_MAX_RASTER_DOTS) wDots = ESCPOS_MAX_RASTER_DOTS;
+            if (wDots < 8 || hDots < 1)
+                return;
+            RasterBits raster;
+            try { raster = ImageRasterizer(data, wDots, hDots); }
+            catch { raster = null; }
+            if (raster == null || raster.Bits == null || raster.Width < 1 || raster.Height < 1)
+                return;
+
+            int first = GetLineIndex(img.Top);
+            if (first >= Lines.Count)
+                first = Lines.Count - 1;
+            int last = GetLineIndex(img.Top + img.Height) - 1;
+            if (last >= Lines.Count)
+                last = Lines.Count - 1;
+            if (last < first)
+                last = first;
+
+            int center = img.Left + img.Width / 2;
+            byte align = 0;
+            if (Math.Abs(center - FPageWidth / 2) <= 120)
+                align = 1;
+            else if (center > FPageWidth / 2)
+                align = 2;
+
+            int stride = (raster.Width + 7) / 8;
+            using (System.IO.MemoryStream s = new System.IO.MemoryStream())
+            {
+                s.Write(new byte[] { 27, (byte)'a', align }, 0, 3);                                           // ESC a n
+                s.Write(new byte[] { 29, (byte)'v', (byte)'0', 0, (byte)(stride & 0xFF), (byte)(stride >> 8), (byte)(raster.Height & 0xFF), (byte)(raster.Height >> 8) }, 0, 8);   // GS v 0 m xL xH yL yH
+                s.Write(raster.Bits, 0, stride * raster.Height);
+                s.Write(new byte[] { 27, (byte)'a', 0 }, 0, 3);
+                PrintLine line = Lines[first];
+                if (line.RawBefore == null)
+                    line.RawBefore = new List<byte[]>();
+                line.RawBefore.Add(s.ToArray());
+            }
+            for (int i = first; i <= last; i++)
+                Lines[i].Consumed = true;
         }
         /// <summary>
         /// The receipt drivers that speak ESC/POS: an Epson TM-T88 family printer, or any of the
@@ -749,7 +837,11 @@ namespace Reportman.Drawing
             masterselect = true;
             limitedmaster = true;
             condensedmaster = true;
-            escapecodes[PrinterRawOperation.EndPrint] = cut ? new byte[] { 27, (byte)'m', 27, 64 } : new byte[] { 27, 64 };
+            // ESC m (partial cut) cuts right where the head is: the last ~15 mm of the receipt (the paper between the
+            // print head and the cutter) stayed inside and only came out with the next ticket ("el ticket no sale
+            // completo", Roberto, 2026-09-09). Same ending as the raster/HTML ticket path (escpos.ts): four line feeds
+            // and GS V 66 0 (feed to the cutting position, then partial cut), followed by the reset.
+            escapecodes[PrinterRawOperation.EndPrint] = cut ? new byte[] { 27, (byte)'d', 4, 29, (byte)'V', 66, 0, 27, 64 } : new byte[] { 27, 64 };
             escapecodes[PrinterRawOperation.Pulse] = new byte[] { 27, 112, 0, 100, 100 };
             DriverCodePage = codepage;
         }
@@ -940,8 +1032,8 @@ namespace Reportman.Drawing
                     // Can select red font
                     escapecodes[PrinterRawOperation.RedFont] = new byte[] { 27, (byte)'r', 1 };
                     escapecodes[PrinterRawOperation.BlackFont] = new byte[] { 27, (byte)'r', 0 };
-                    // Cut paper
-                    escapecodes[PrinterRawOperation.EndPrint] = new byte[] { 27, (byte)'m', 27, 64 };
+                    // Cut paper: feed to the cutting position first (ESC d 4 + GS V 66 0), see FillTm88.
+                    escapecodes[PrinterRawOperation.EndPrint] = new byte[] { 27, (byte)'d', 4, 29, (byte)'V', 66, 0, 27, 64 };
                     // Open drawer
                     escapecodes[PrinterRawOperation.Pulse] = new byte[] { 27, 112, 0, 100, 100 };
                     break;
@@ -973,8 +1065,8 @@ namespace Reportman.Drawing
                     masterselect = true;
                     limitedmaster = true;
                     condensedmaster = true;
-                    // Cut paper
-                    escapecodes[PrinterRawOperation.EndPrint] = new byte[] { 27, (byte)'m', 27, 64 };
+                    // Cut paper: feed to the cutting position first (ESC d 4 + GS V 66 0), see FillTm88.
+                    escapecodes[PrinterRawOperation.EndPrint] = new byte[] { 27, (byte)'d', 4, 29, (byte)'V', 66, 0, 27, 64 };
                     // Open drawer
                     escapecodes[PrinterRawOperation.Pulse] = new byte[] { 27, 112, 0, 100, 100 };
                     break;
