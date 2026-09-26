@@ -14,7 +14,8 @@ namespace Reportman.Drawing
     /// </summary>
     internal interface IBidiPara : IDisposable
     {
-        /// <summary>Analyzes a paragraph. 255 as level = default direction from the text.</summary>
+        /// <summary>Analyzes a paragraph. 254 (UBIDI_DEFAULT_LTR) = direction from the first strong character, LTR without one;
+        /// 255 (UBIDI_DEFAULT_RTL) would make a line of only digits and signs RTL.</summary>
         void SetPara(string text, byte paraLevel);
         /// <summary>The resolved embedding level of the character at <paramref name="charIndex"/>.</summary>
         byte GetLevelAt(int charIndex);

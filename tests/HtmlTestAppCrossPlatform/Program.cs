@@ -12,7 +12,7 @@ namespace HtmlTestApp
                 Wrapper.Init();
                 var bidi = new BiDi();
                 string text = "hello world אבג";
-                bidi.SetPara(text, 255, null);
+                bidi.SetPara(text, 254, null);
                 
                 Console.WriteLine("Logical Runs:");
                 int start = 0;

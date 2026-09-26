@@ -1876,6 +1876,9 @@ namespace Reportman.Drawing
             }
         }
 
+        /// <summary>UBIDI_DEFAULT_LTR: paragraph level from the first strong character, LTR when there is none.</summary>
+        internal const byte BidiDefaultLtr = 254;
+
         private struct BiDiRun
         {
             public int Start;
@@ -1957,7 +1960,11 @@ namespace Reportman.Drawing
                     var possibleBreaksCharIdx = HtmlLayoutUtils.FillPossibleLineBreaksString(line);
                     var calculatedLines = new List<LineGlyphs>();
 
-                    bidi.SetPara(line, 255);
+                    // 254 = UBIDI_DEFAULT_LTR: the paragraph direction comes from the first strong character, and a line
+                    // WITHOUT one (dates, amounts, folios: only digits and signs) is left-to-right. 255 (UBIDI_DEFAULT_RTL)
+                    // made those lines RTL: "2026-09-12 04:30" was painted "04:30 2026-09-12", "-45.25" as "45.25-" and
+                    // "(1)" mirrored as ")1(", while ActualText stayed right. Arabic/Hebrew text still resolves RTL.
+                    bidi.SetPara(line, BidiDefaultLtr);
 
                     double remaining = lineWidthLimit;
                     int textOffset = lineSubText.Position;
