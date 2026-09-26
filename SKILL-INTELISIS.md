@@ -44,6 +44,7 @@ Lo que lleva hoy:
 | `MetaObjectType.Image` → `NativeImageOut`, con el rasterizador inyectado desde fuera (`PrintOutText.ImageRasterizer`) | un ticket no podía llevar logo: las imágenes no se dibujaban |
 | `Reportman.Drawing.CrossPlatform/EscPosImagen.cs` (nuevo) | el logo, rasterizado con SkiaSharp y difuminado Floyd–Steinberg, que es lo que lo hace legible en una térmica de dos tonos |
 | `tests/EscPosReceiptTest` | espera la secuencia de corte nueva |
+| `Reportman.Drawing.Excel/PrintOutClosedExcel.cs` (2026-09-25) | el Excel del Hub (`FormatoReporte.Excel`): el exportador solo escribía a archivo; tomaba cualquier cosa «numérica» por número (un EAN o un folio con ceros perdían dígitos, «1,2,3» era número) y leía fechas con un parse libre y ambiguo (05/09 = mayo o septiembre según el servidor) que además solo aceptaba 8–10 caracteres; un texto de los datos que empezaba con `=` quedaba **sin** neutralizar porque ClosedXML se come el apóstrofo inicial, y `+ - @` tab o CR ni se miraban; una imagen ilegible abortaba el libro. Ahora: salida a `ResultStream`, `SheetName`, números estrictos por cultura con el formato que se imprimió (decimales, miles, moneda, %, paréntesis), códigos como texto, fechas por patrones exactos (`DatePatterns`), textos peligrosos con apóstrofo literal + `quotePrefix`, anchos de columna del diseño |
 
 ## Reglas al tocar este repositorio
 
