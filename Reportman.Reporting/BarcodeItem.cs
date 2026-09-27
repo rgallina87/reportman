@@ -182,6 +182,11 @@ namespace Reportman.Reporting
                 metafile, MaxExtent, ref PartialPrint);
 
             CurrentText = GetText();
+            // Sin contenido no hay nada que codificar: se deja el hueco en blanco. Antes el codificador lanzaba
+            // "Found empty contents" y la excepción tumbaba el reporte ENTERO — bastaba un artículo sin código,
+            // o un código recién puesto en el diseñador que aún no tiene expresión.
+            if (string.IsNullOrEmpty(CurrentText))
+                return;
             try
             {
 #if OMIT_ZXING
