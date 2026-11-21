@@ -2045,7 +2045,13 @@ namespace Reportman.Drawing
                                 // la fuente pedida; si hay que buscar reserva, el de la que se
                                 // encuentre — que es lo que hace que el escritor de PDF cambie de
                                 // recurso al llegar a ellas.
-                                string familiaDeLasPosiciones = TempFont.WFontName;
+                                // El nombre con el que se MIDIÓ y se conformó el tramo: el de la plataforma (en Unix, LFontName),
+                                // que es el que el escritor de PDF vuelve a pedir al cambiar de recurso (PDFCanvas compara con
+                                // Font.GetFontFamily()). Con WFontName un informe que pide «Arial» en Windows y «Helvetica» en Unix
+                                // conformaba con DejaVu Sans (Helvetica → Cantarell → DejaVu) y escribía esos índices de glifo bajo
+                                // Liberation Sans (Arial): letras con el ancho de otra fuente y, en el «—» (2807 en DejaVu, Liberation
+                                // tiene 2620), FT_Load_Glyph → FT_Err_Invalid_Argument (Descargar PDF en la VPS linux-arm64).
+                                string familiaDeLasPosiciones = TempFont.GetFontFamily();
 
                                 if (hasMissingGlyphs)
                                 {
@@ -2141,7 +2147,7 @@ namespace Reportman.Drawing
                                             // huecos, que es lo que pasaba antes de todo esto.
                                             pos = CalcGlyphPositions(textoTramo, rToL, DetectScript(textoTramo),
                                                 activeSize, tempAdata, TempFont);
-                                            familia = TempFont.WFontName;
+                                            familia = TempFont.GetFontFamily();
                                         }
                                         for (int k = 0; k < pos.Length; k++)
                                         {
@@ -2355,7 +2361,7 @@ namespace Reportman.Drawing
                         foreach (var g in lineInfo.Glyphs)
                         {
                             double gFontSize = g.HasFontSize ? g.FontSize : FontSize;
-                            string gFontFamily = g.FontFamily ?? pdfFont.WFontName;
+                            string gFontFamily = g.FontFamily ?? pdfFont.GetFontFamily();
                             
                             // Find the font data for this glyph
                             TTFontData gFontData = null;
